@@ -1,5 +1,5 @@
 #include <stdio.h>
-#include <stdlib.h> 
+#include <stdlib.h>
 #include <cuda.h>
 #include <math.h>
 #include <fcntl.h>
@@ -35,10 +35,10 @@ void s_sparse_sampler(int s, int k) {
     int sampler_size = sizeof(one_sparse_sampler);
 
     int *d_s, *d_k;
+    int *d_buffer;                      // device copy of the data
     one_sparse_sampler *samplers;       // host copy of the samplers
     one_sparse_sampler *d_samplers;     // device copy of the samplers
     int *buffer;                        // host copy of the data
-    int *d_buffer;                      // device copy of the data
 
     // Allocate memory
     cudaMalloc((void**)&d_s, sizeof(int));
@@ -62,7 +62,7 @@ void s_sparse_sampler(int s, int k) {
             // Launch the process kernel on GPU
             process<<<k,1>>>(d_samplers, d_buffer, d_s, d_k);
         }
-        
+
     }
 
     // Copy result back to host
