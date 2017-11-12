@@ -19,6 +19,10 @@ typedef struct
     long long fingerprint = 0;
 } one_sparse_sampler;
 
+__device__ float hash(int* coeff, int numCoefficients, int value) {
+  
+}
+
 __global__ void process(one_sparse_sampler *samplers, int *buffer, int *s, int *k) {
     int row = blockIdx.x;
     int col = *buffer % (2 * (*s));
