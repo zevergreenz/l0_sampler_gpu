@@ -6,16 +6,16 @@
 
 #define BUFFER_SIZE 2
 #define P 1272461 // a large prime number
-#define Z 32909   // a random number from [0,P-1]
+#define Z 2   // a random number from [0,P-1]
 
 // X terms produces an x-independent hash
 #define NUMCOEFF 4
 
 typedef struct
 {
-  long long sum         = 0;
-  long long weight      = 0;
-  long long fingerprint = 0;
+  int sum;
+  int weight;
+  int fingerprint;
 } one_sparse_sampler;
 
 typedef struct
