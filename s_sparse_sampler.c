@@ -59,7 +59,7 @@ void process(s_sparse_sampler sampler, int *buffer) {
       one_sampler               = &sampler.samplers[i * 2 * sampler.s + hashVal];
       one_sampler->weight      += update;
       one_sampler->sum         += index * update;
-      one_sampler->fingerprint += (index * pow((double)Z, (double)index));
+      one_sampler->fingerprint += (update * pow(Z, index));
     }
   }
 }
