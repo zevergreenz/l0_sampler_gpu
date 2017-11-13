@@ -95,19 +95,21 @@ void initialize_s_sparse_sampler(s_sparse_sampler *sampler,
 
 void sample(char *filename, int s, int k) {
   s_sparse_sampler sampler;
-  int *buffer; // host copy of the data
-
+  int *buffer;
   initialize_s_sparse_sampler(&sampler, s, k, NUMCOEFF);
   cudaMallocManaged((void **)&buffer, sizeof(int) * BUFFER_SIZE);
 
   // Read data from file
   FILE *fdIn = fopen(filename, "r");
-
-  while (fgets((char *)buffer, BUFFER_SIZE * sizeof(int), fdIn)) {
-    for (int i = 0; i < BUFFER_SIZE; i++) {
+  while (!feof(fdIn)) {
+    fscanf(fdIn, "%d %d", &buffer[0], &buffer[1]);
+    for (int i = 0; i < BUFFER_SIZE / 2; i++) {
       process(sampler, buffer);
     }
   }
+
+  // Query the s-sparse sampler
+  printf("query: %d\n", query(sampler));
 
   // Clean up
   cudaFree(buffer);
@@ -116,5 +118,6 @@ void sample(char *filename, int s, int k) {
 }
 
 int main(void) {
+  sample("data_stream.txt", 1, 1);
   return 0;
 }
