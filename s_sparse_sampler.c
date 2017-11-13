@@ -64,6 +64,24 @@ void process(s_sparse_sampler sampler, int *buffer) {
   }
 }
 
+int query(s_sparse_sampler sampler) {
+  int index;
+  one_sparse_sampler *one_sampler;
+
+  for (int i = 0; i < sampler.k; i++) {
+    for (int j = 0; j < sampler.s * 2; j++) {
+      one_sampler = &sampler.samplers[i * 2 * sampler.s + j];
+      if (one_sampler->weight != 0) {
+        index = one_sampler->sum / one_sampler->weight;
+        int error = one_sampler->fingerprint - ((one_sampler->weight * pow(Z, index)));
+        if ((int) error == 0) {
+          return index;
+        }
+      }
+    }
+  }
+}
+
 void initialize_s_sparse_sampler(s_sparse_sampler *sampler,
                                  int               s,
                                  int               k,
