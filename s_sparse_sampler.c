@@ -64,22 +64,27 @@ void process(s_sparse_sampler sampler, int *buffer) {
   }
 }
 
-int query(s_sparse_sampler sampler) {
-  int index;
+/**
+  This method returns an array containing all non-zero indices in the s_sparse sampler.
+  As of now, this method may contain duplicated indices.
+  TODO: Remove duplicates.
+ */
+int* query(s_sparse_sampler sampler, int &size) {
+  int *result = (int *) malloc(2 * sampler.s * sampler.k * sizeof(int));
+  size = 0;
   one_sparse_sampler *one_sampler;
 
   for (int i = 0; i < sampler.k; i++) {
     for (int j = 0; j < sampler.s * 2; j++) {
       one_sampler = &sampler.samplers[i * 2 * sampler.s + j];
       if (one_sampler->weight != 0) {
-        index = one_sampler->sum / one_sampler->weight;
+        int index = one_sampler->sum / one_sampler->weight;
         int error = one_sampler->fingerprint - ((one_sampler->weight * pow(Z, index)));
-        if ((int) error == 0) {
-          return index;
-        }
+        if ((int) error == 0) result[size++] = index;
       }
     }
   }
+  return result;
 }
 
 void initialize_s_sparse_sampler(s_sparse_sampler *sampler,
@@ -108,8 +113,11 @@ void sample(char *filename, int s, int k) {
     }
   }
 
-  // Query the s-sparse sampler
-  printf("query: %d\n", query(sampler));
+  // Query the s-sparse sampler and print out
+  int size = 0;
+  int* result = query(sampler, size);
+  for (int i = 0; i < size; i++) printf("%d ", result[i]);
+  printf("\n");
 
   // Clean up
   cudaFree(buffer);
@@ -118,6 +126,6 @@ void sample(char *filename, int s, int k) {
 }
 
 int main(void) {
-  sample("data_stream.txt", 1, 1);
+  sample("data_stream.txt", 15, 15);
   return 0;
 }
