@@ -42,10 +42,16 @@ int hash(int *coeff, int numCoefficients, int value) {
   } return val;
 }
 
+__device__ void hash_gpu(int &hashVal, int *coeff, int numCoefficients, int value) {
+  int val = value;
+
+  for (int i = 0; i < numCoefficients; i++) {
+    val = (val * coeff[i] + val) % P;
+  } 
+  hashVal = val;
+}
+
 void process(s_sparse_sampler sampler, int *buffer) {
-  // int row   = blockIdx.x;
-  // int col   = *buffer % (2 * (*s));
-  // int index = row * 2 * (*s) + col;
   int index, update, hashVal;
   one_sparse_sampler *one_sampler;
 
@@ -61,6 +67,26 @@ void process(s_sparse_sampler sampler, int *buffer) {
       one_sampler->sum         += index * update;
       one_sampler->fingerprint += (update * pow(Z, index));
     }
+  }
+}
+
+__global__ void process_gpu(s_sparse_sampler sampler, int *buffer) {
+  int i, index, update, hashVal;
+  one_sparse_sampler *one_sampler;
+
+  i = blockIdx.x;
+  for (int j = 0; j < BUFFER_SIZE / 2; j++) {
+    index   = buffer[j >> 1];
+    update  = buffer[1 + (j >> 1)];
+    hash_gpu(hashVal, 
+             &(sampler.coefficients[i * sampler.numCoefficients]),
+             sampler.numCoefficients,
+             index);
+    hashVal %= (2 * sampler.s);
+    one_sampler               = &sampler.samplers[i * 2 * sampler.s + hashVal];
+    one_sampler->weight      += update;
+    one_sampler->sum         += index * update;
+    one_sampler->fingerprint += (update * pow(Z, index));
   }
 }
 
@@ -109,9 +135,16 @@ void sample(char *filename, int s, int k) {
   while (!feof(fdIn)) {
     fscanf(fdIn, "%d %d", &buffer[0], &buffer[1]);
     for (int i = 0; i < BUFFER_SIZE / 2; i++) {
-      process(sampler, buffer);
+      // Sequencial processing
+      // process(sampler, buffer);
+
+      // Parallel processing
+      process_gpu<<<sampler.k, 1>>>(sampler, buffer);
     }
   }
+
+  // Synchronize parallel blocks.
+  cudaDeviceSynchronize();
 
   // Query the s-sparse sampler and print out
   int size = 0;
