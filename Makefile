@@ -4,4 +4,4 @@ cuda_build:
 
 cuda: cuda_build
 	# /usr/bin/time -f "Real Time %e\nCPU Time %U \nKernel Time %S\nContext Switches %w" bin/mm-cuda 1000;
-bin/mm-cuda in/10int.dat;
+	#bin/mm-cuda in/10int.dat;
