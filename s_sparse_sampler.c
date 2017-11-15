@@ -136,10 +136,10 @@ void sample(char *filename, int s, int k) {
     fscanf(fdIn, "%d %d", &buffer[0], &buffer[1]);
     for (int i = 0; i < BUFFER_SIZE / 2; i++) {
       // Sequencial processing
-      // process(sampler, buffer);
+      process(sampler, buffer);
 
       // Parallel processing
-      process_gpu<<<sampler.k, 1>>>(sampler, buffer);
+      // process_gpu<<<sampler.k, 1>>>(sampler, buffer);
     }
   }
 
