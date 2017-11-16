@@ -140,6 +140,7 @@ unsigned int* query(s_sparse_sampler sampler, unsigned int& size) {
 
   size = 0;
   one_sparse_sampler *one_sampler;
+  unsigned int p = P;
 
   for (unsigned int i = 0; i < sampler.k; i++) {
     for (unsigned int j = 0; j < sampler.s * 2; j++) {
@@ -150,7 +151,7 @@ unsigned int* query(s_sparse_sampler sampler, unsigned int& size) {
         unsigned int error = one_sampler->fingerprint -
                     ((one_sampler->weight * pow(Z, index)));
 
-        if ((unsigned int)error == 0) result[size++] = index;
+        if ((unsigned int)error % P == 0) result[size++] = index;
       }
     }
   }
