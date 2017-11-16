@@ -99,16 +99,25 @@ __device__ unsigned int powMod(unsigned int z, unsigned int index) {
 }
 
 __global__ void process_gpu(s_sparse_sampler sampler, unsigned int *buffer) {
-  unsigned int i, index, update, hashVal;
+  unsigned int i, j, index, update, hashVal, n, s, k;
   one_sparse_sampler *one_sampler;
+  unsigned int coefficients[NUMCOEFF];
+
+  n = sampler.numCoefficients;
+  s = sampler.s;
+  k = sampler.k;
 
   i = blockIdx.x;
 
-  for (unsigned int j = 0; j < BUFFER_SIZE / 2; j++) {
-    index  = buffer[j >> 1];
-    update = buffer[1 + (j >> 1)];
-    hashVal = hash_gpu( &(sampler.coefficients[i * sampler.numCoefficients]),
-             sampler.numCoefficients,
+  for(j = 0; j < n; j++) {
+    coefficients[j] = sampler.coefficients[j + i * n];
+  }
+
+  for (j = 0; j < BUFFER_SIZE / 2; j++) {
+    index  = buffer[((i + j) % BUFFER_SIZE) >> 1];
+    update = buffer[1 + (((i + j) % BUFFER_SIZE) >> 1)];
+    hashVal = hash_gpu( &(coefficients[i * n]),
+             n,
              index) % (2 * sampler.s);
     one_sampler               = &sampler.samplers[i * 2 * sampler.s + hashVal];
     one_sampler->weight      += update;
@@ -181,6 +190,8 @@ void sample(char *filename, unsigned int s, unsigned int k) {
   FILE *fdIn = fopen(filename, "r");
 
   int i;
+
+
   while (!feof(fdIn)) {
     for(i = 0; i < BUFFER_SIZE / 2; i++) {
       if(feof(fdIn)) {
