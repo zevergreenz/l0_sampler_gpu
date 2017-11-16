@@ -39,17 +39,17 @@ int hash(int *coeff, int numCoefficients, int value) {
 
   for (int i = 0; i < numCoefficients; i++) {
     val = (val * coeff[i] + val) % P;
-  } return val;
+  } 
+  return (val < 0) ? val + P : val;
 }
 
-__device__ int hash_gpu(int *coeff, int numCoefficients,
-                        int value) {
+__device__ void hash_gpu(int &hashVal, int *coeff, int numCoefficients, int value) {
   int val = value;
 
   for (int i = 0; i < numCoefficients; i++) {
     val = (val * coeff[i] + val) % P;
   }
-  return val;
+  hashVal = (val < 0) ? val + P : val;
 }
 
 void process(s_sparse_sampler sampler, int *buffer) {
@@ -82,7 +82,8 @@ __global__ void process_gpu(s_sparse_sampler sampler, int *buffer) {
   for (int j = 0; j < BUFFER_SIZE / 2; j++) {
     index  = buffer[j >> 1];
     update = buffer[1 + (j >> 1)];
-    hash_gpu(&(sampler.coefficients[i * sampler.numCoefficients]),
+    hash_gpu(hashVal,
+             &(sampler.coefficients[i * sampler.numCoefficients]),
              sampler.numCoefficients,
              index);
     hashVal                  %= (2 * sampler.s);
