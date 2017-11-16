@@ -76,33 +76,33 @@ __device__ unsigned int powMod(unsigned int z, unsigned int index) {
   if(index == 0) {
     return 1;
   } else if(index & 1 == 1) {
-    subpow = powMod(z, index << 1);
+    subpow = powMod(z, index >> 1);
     return (z * subpow * subpow) % P;
   } else {
-    subpow = powMod(z, index << 1);
+    subpow = powMod(z, index >> 1);
     return (subpow * subpow) % P;
   }
 }
 
 __global__ void process_gpu(s_sparse_sampler sampler, unsigned int *buffer) {
-  // unsigned int i, index, update, hashVal;
-  // one_sparse_sampler *one_sampler;
-  //
-  // i = blockIdx.x;
-  //
-  // for (unsigned int j = 0; j < BUFFER_SIZE / 2; j++) {
-  //   index  = buffer[j >> 1];
-  //   update = buffer[1 + (j >> 1)];
-  //   hashVal = hash_gpu( &(sampler.coefficients[i * sampler.numCoefficients]),
-  //            sampler.numCoefficients,
-  //            index) % (2 * sampler.s);
-  //   one_sampler               = &sampler.samplers[i * 2 * sampler.s + hashVal];
-  //   one_sampler->weight      += update;
-  //   one_sampler->sum         += index * update;
-  //   // This is slow! pow() only exists for single and double-precision floats
-  //   // And we need a double to cover the range of unsigned integers
-  //   one_sampler->fingerprint += (update * powMod(Z, index));
-  // }
+  unsigned int i, index, update, hashVal;
+  one_sparse_sampler *one_sampler;
+  
+  i = blockIdx.x;
+  
+  for (unsigned int j = 0; j < BUFFER_SIZE / 2; j++) {
+    index  = buffer[j >> 1];
+    update = buffer[1 + (j >> 1)];
+    hashVal = hash_gpu( &(sampler.coefficients[i * sampler.numCoefficients]),
+             sampler.numCoefficients,
+             index) % (2 * sampler.s);
+    one_sampler               = &sampler.samplers[i * 2 * sampler.s + hashVal];
+    one_sampler->weight      += update;
+    one_sampler->sum         += index * update;
+    // This is slow! pow() only exists for single and double-precision floats
+    // And we need a double to cover the range of unsigned integers
+    one_sampler->fingerprint += (update * powMod(Z, index));
+  }
 }
 
 /**
@@ -163,15 +163,15 @@ void sample(char *filename, unsigned int s, unsigned int k) {
 
     for (int i = 0; i < BUFFER_SIZE / 2; i++) {
       // Sequencial processing
-      // process(sampler, buffer);
+      process(sampler, buffer);
 
       // Parallel processing
-      process_gpu<<<sampler.k, 1>>>(sampler, buffer);
+      // process_gpu<<<sampler.k, 1>>>(sampler, buffer);
+      // cudaDeviceSynchronize();
     }
   }
 
   // Synchronize parallel blocks.
-  cudaDeviceSynchronize();
 
   // Query the s-sparse sampler and print out
   unsigned int  size   = 0;
