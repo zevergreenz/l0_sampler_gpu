@@ -4,12 +4,14 @@
 #include <math.h>
 #include <fcntl.h>
 
-#define BUFFER_SIZE 36864
+#define BUFFER_SIZE 1024
 #define P 179426239 // a large prime number
 #define Z 2       // a random number from [0,P-1]
 
 // X terms produces an x-independent hash
 #define NUMCOEFF 4
+
+#define K 15
 
 typedef struct
 {
@@ -99,34 +101,37 @@ __device__ unsigned int powMod(unsigned int z, unsigned int index) {
 }
 
 __global__ void process_gpu(s_sparse_sampler sampler, unsigned int *buffer) {
-  unsigned int i, j, index, update, hashVal, n, s, k;
+  unsigned int i, j, index, update, hashVal, n, s, k, y;
   one_sparse_sampler *one_sampler;
-  unsigned int coefficients[NUMCOEFF];
+  __shared__ unsigned int coefficients[4 * K];
+  __shared__ unsigned int sharedBuffer[BUFFER_SIZE];
 
   n = sampler.numCoefficients;
   s = sampler.s;
   k = sampler.k;
 
   i = blockIdx.x;
-
-  for(j = 0; j < n; j++) {
-    coefficients[j] = sampler.coefficients[j + i * n];
+  j = blockIdx.y;
+  if(j < n) {
+    coefficients[j + i * n] = sampler.coefficients[j + i * n];
   }
-
-  for (j = 0; j < BUFFER_SIZE / 2; j++) {
-    index  = buffer[((i + j) % BUFFER_SIZE) >> 1];
-    update = buffer[1 + (((i + j) % BUFFER_SIZE) >> 1)];
-    hashVal = hash_gpu( &(coefficients[i * n]),
-             n,
-             index) % (2 * sampler.s);
-    one_sampler               = &sampler.samplers[i * 2 * sampler.s + hashVal];
-    one_sampler->weight      += update;
-    one_sampler->sum         += index * update;
-    // This is slow! pow() only exists for single and double-precision floats
-    // And we need a double to cover the range of unsigned integers
-    one_sampler->fingerprint += (update * powMod(Z, index));
-    one_sampler->fingerprint %= P;
+  if(i <= 1) {
+    sharedBuffer[j * 2 + i] = buffer[j * 2 + i];
   }
+  __syncthreads();
+
+  index  = sharedBuffer[j >> 1];
+  update = sharedBuffer[1 + (j >> 1)];
+  hashVal = hash_gpu( &(coefficients[i * n]),
+           n,
+           index) % (2 * sampler.s);
+  one_sampler               = &sampler.samplers[i * 2 * s + hashVal];
+  one_sampler->weight      += update;
+  one_sampler->sum         += index * update;
+  // This is slow! pow() only exists for single and double-precision floats
+  // And we need a double to cover the range of unsigned integers
+  one_sampler->fingerprint += (update * powMod(Z, index));
+  one_sampler->fingerprint %= P;
 }
 
 /**
@@ -192,6 +197,7 @@ void sample(char *filename, unsigned int s, unsigned int k) {
 
   int i;
 
+  dim3 blocks(k, BUFFER_SIZE / 2);
 
   while (!feof(fdIn)) {
     for(i = 0; i < BUFFER_SIZE / 2; i++) {
@@ -207,7 +213,7 @@ void sample(char *filename, unsigned int s, unsigned int k) {
     seq_time += (float)(wall_clock_time() - start_time)/1000000000;
 
     start_time = wall_clock_time();
-    process_gpu<<<gpu_sampler.k, 1>>>(gpu_sampler, buffer);
+    process_gpu<<<blocks, 1>>>(gpu_sampler, buffer);
     cudaDeviceSynchronize();
     gpu_time += (float)(wall_clock_time() - start_time)/1000000000;
 
