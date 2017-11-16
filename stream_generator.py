@@ -9,4 +9,4 @@ def generate_stream(max_index, num_ops):
 			bits[index] = not bits[index]
 			print(str(index+1) + " " + str(update) + " ", file=f, end="")
 
-generate_stream(100, 1000000)
+generate_stream(100, 100000)
