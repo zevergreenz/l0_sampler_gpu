@@ -244,7 +244,7 @@ void sample(char *filename, unsigned int s, unsigned int k) {
   // cudaFree(d_samplers);
 }
 
-int main(void) {
-  sample("data_stream.txt", 15, 15);
+int main(int argc, char **argv) {
+  sample(argv[0], 15, 15);
   return 0;
 }
