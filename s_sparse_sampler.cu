@@ -150,6 +150,7 @@ unsigned int* query(s_sparse_sampler sampler, unsigned int& size) {
   for (int i = 0; i < sampler.k; i++) {
     for (int j = 0; j < sampler.s * 2; j++) {
       one_sampler = &(sampler.samplers[i * 2 * sampler.s + j]);
+      printf("Accessing %i at memory %#10X", i * 2 * sampler.s + j, one_sampler);
 
       if (one_sampler->weight != 0) {
         unsigned int index = one_sampler->sum / one_sampler->weight;
@@ -167,13 +168,20 @@ void initialize_s_sparse_sampler(s_sparse_sampler *sampler,
                                  unsigned int               s,
                                  unsigned int               k,
                                  unsigned int               n) {
+  int i = 0;
   sampler->k               = k;
   sampler->s               = s;
   sampler->numCoefficients = n;
-  cudaMallocManaged((void **)&(sampler->samplers),     sizeof(unsigned int) * k * s * 2);
+  cudaMallocManaged((void **)&(sampler->samplers),     sizeof(one_sparse_sampler) * k * s * 2);
   cudaMallocManaged((void **)&(sampler->coefficients), sizeof(unsigned int) * k * n);
 
-  for (unsigned int i = 0; i < k * n; i++) {
+  for(i = 0; i < k * s * 2; i++) {
+    sampler->samplers[i].sum = 0;
+    sampler->samplers[i].weight = 0;
+    sampler->samplers[i].fingerprint = 0;
+  }
+  for (i = 0; i < k * n; i++)
+  {
     sampler->coefficients[i] = rand();
   }
 }
@@ -191,22 +199,23 @@ void sample(char *filename, unsigned int s, unsigned int k) {
   gpu_sampler.coefficients = seq_sampler.coefficients;
 
   cudaMallocManaged((void **)&buffer, sizeof(unsigned int) * BUFFER_SIZE);
-
+  cudaMallocManaged((void **)&buffer2, sizeof(unsigned int) * BUFFER_SIZE);
 
   int i;
 
 
   // First evaluate sequential program, then parallel program
-  start_time = wall_clock_time();
   // Read data from file
   FILE *fdIn = fopen(filename, "r");
-  while (!feof(fdIn)) {
+  start_time = wall_clock_time();
+  while (!feof(fdIn))
+  {
     for(i = 0; i < BUFFER_SIZE / 2; i++) {
       if(feof(fdIn)) {
         buffer[i >> 1] = 0;
         buffer[1 + (i >> 1)] = 0;
       } else {
-        fscanf(fdIn, "%u %u", &buffer[i >> 1], &buffer[1 + (i >> 1)]);
+        fscanf(fdIn, "%i %i", &buffer[i >> 1], &buffer[1 + (i >> 1)]);
       }
     }
     process(seq_sampler, buffer);
@@ -216,36 +225,37 @@ void sample(char *filename, unsigned int s, unsigned int k) {
   fclose(fdIn);
   
   // Read data from file
-  fdIn = fopen(filename, "r");
-  dim3 blocks(k, BUFFER_SIZE / 2);
-  int flip_flop = 0;
-  unsigned int *readBuffer;
-  start_time = wall_clock_time();
-  while (!feof(fdIn))
-  { 
-    // Basically, process one buffer while reading in the next one
-    if(flip_flop) {
-      readBuffer = buffer;
-    } else {
-      readBuffer = buffer2;
-    }
-    for (i = 0; i < BUFFER_SIZE / 2; i++)
-    {
-      if (feof(fdIn))
-      {
-        readBuffer[i >> 1] = 0;
-        readBuffer[1 + (i >> 1)] = 0;
-      }
-      else
-      {
-        fscanf(fdIn, "%u %u", &readBuffer[i >> 1], &readBuffer[1 + (i >> 1)]);
-      }
-    }
-    // Synchronize parallel blocks.
-    cudaDeviceSynchronize();
-    process_gpu<<<blocks, 1>>>(gpu_sampler, readBuffer);
-    flip_flop = 1 - flip_flop;
-  }
+  // fdIn = fopen(filename, "r");
+  // dim3 blocks(k, BUFFER_SIZE / 2);
+  // int flip_flop = 0;
+  // unsigned int *readBuffer;
+  // start_time = wall_clock_time();
+  // while (!feof(fdIn))
+  // { 
+  //   // Basically, process one buffer while reading in the next one
+  //   if(flip_flop) {
+  //     readBuffer = buffer;
+  //   } else {
+  //     readBuffer = buffer2;
+  //   }
+  //   for (i = 0; i < BUFFER_SIZE / 2; i++)
+  //   {
+  //     if (feof(fdIn))
+  //     {
+  //       readBuffer[i >> 1] = 0;
+  //       readBuffer[1 + (i >> 1)] = 0;
+  //     }
+  //     else
+  //     {
+  //       fscanf(fdIn, "%u %u", &readBuffer[i >> 1], &readBuffer[1 + (i >> 1)]);
+  //     }
+  //   }
+  //   // Synchronize parallel blocks.
+  //   cudaDeviceSynchronize();
+  //   // process_gpu<<<blocks, 1>>>(gpu_sampler, readBuffer);
+  //   flip_flop = 1 - flip_flop;
+  // }
+  // cudaDeviceSynchronize();
   gpu_time = (float)(wall_clock_time() - start_time) / 1000000000;
 
   unsigned int size;
