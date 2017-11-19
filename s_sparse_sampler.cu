@@ -245,6 +245,6 @@ void sample(char *filename, unsigned int s, unsigned int k) {
 }
 
 int main(int argc, char **argv) {
-  sample(argv[0], 15, 15);
+  sample(argv[1], 15, 15);
   return 0;
 }
