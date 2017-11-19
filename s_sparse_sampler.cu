@@ -71,13 +71,15 @@ void process(s_sparse_sampler sampler, unsigned int *buffer) {
   unsigned int index, update, hashVal;
   one_sparse_sampler *one_sampler;
 
-  for (unsigned int j = 0; j < BUFFER_SIZE / 2; j++) {
+  for (unsigned int j = 0; j < BUFFER_SIZE; j+= 2) {
     for (unsigned int i = 0; i < sampler.k; i++) {
-      index   = buffer[j >> 1];
-      update  = buffer[1 + (j >> 1)];
+      index   = buffer[j];
+      update  = buffer[j + 1];
       hashVal = hash(&(sampler.coefficients[i * sampler.numCoefficients]),
                      sampler.numCoefficients,
                      index) % (2 * sampler.s);
+      if(index)
+        // printf("Updating Sampler (%i, %i) with value %u %u\n", i, hashVal, index, update);
       one_sampler               = &sampler.samplers[i * 2 * sampler.s + hashVal];
       one_sampler->weight      += update;
       one_sampler->sum         += index * update;
@@ -120,18 +122,18 @@ __global__ void process_gpu(s_sparse_sampler sampler, unsigned int *buffer) {
   }
   __syncthreads();
 
-  // index  = sharedBuffer[j >> 1];
-  // update = sharedBuffer[1 + (j >> 1)];
-  // hashVal = hash_gpu( &(coefficients[i * n]),
-  //          n,
-  //          index) % (2 * sampler.s);
-  // one_sampler               = &sampler.samplers[i * 2 * s + hashVal];
-  // one_sampler->weight      += update;
-  // one_sampler->sum         += index * update;
-  // // This is slow! pow() only exists for single and double-precision floats
-  // // And we need a double to cover the range of unsigned integers
-  // one_sampler->fingerprint += (update * powMod(Z, index));
-  // one_sampler->fingerprint %= P;
+  index  = sharedBuffer[j >> 1];
+  update = sharedBuffer[1 + (j >> 1)];
+  hashVal = hash_gpu( &(coefficients[i * n]),
+           n,
+           index) % (2 * sampler.s);
+  one_sampler               = &sampler.samplers[i * 2 * s + hashVal];
+  one_sampler->weight      += update;
+  one_sampler->sum         += index * update;
+  // This is slow! pow() only exists for single and double-precision floats
+  // And we need a double to cover the range of unsigned integers
+  one_sampler->fingerprint += (update * powMod(Z, index));
+  one_sampler->fingerprint %= P;
 }
 
 /**
@@ -143,6 +145,7 @@ __global__ void process_gpu(s_sparse_sampler sampler, unsigned int *buffer) {
 unsigned int* query(s_sparse_sampler sampler, unsigned int& size) {
   unsigned int *result = (unsigned int *)malloc(2 * sampler.s * sampler.k * sizeof(unsigned int));
 
+  cudaDeviceSynchronize();
   size = 0;
   one_sparse_sampler *one_sampler;
   int p = P;
@@ -150,13 +153,11 @@ unsigned int* query(s_sparse_sampler sampler, unsigned int& size) {
   for (int i = 0; i < sampler.k; i++) {
     for (int j = 0; j < sampler.s * 2; j++) {
       one_sampler = &(sampler.samplers[i * 2 * sampler.s + j]);
-      printf("Accessing %i at memory %#10X", i * 2 * sampler.s + j, one_sampler);
-
+      // printf("sampler (%i, %i) has weight %u\n", i, j, one_sampler->weight);
       if (one_sampler->weight != 0) {
         unsigned int index = one_sampler->sum / one_sampler->weight;
         unsigned int error = one_sampler->fingerprint -
                     ((one_sampler->weight * pow(Z, index)));
-
         if (error % P == 0) result[size++] = index;
       }
     }
@@ -210,12 +211,13 @@ void sample(char *filename, unsigned int s, unsigned int k) {
   start_time = wall_clock_time();
   while (!feof(fdIn))
   {
-    for(i = 0; i < BUFFER_SIZE / 2; i++) {
+    for(i = 0; i < BUFFER_SIZE; i+= 2) {
       if(feof(fdIn)) {
-        buffer[i >> 1] = 0;
-        buffer[1 + (i >> 1)] = 0;
+        buffer[i] = 0;
+        buffer[i + 1] = 0;
       } else {
-        fscanf(fdIn, "%i %i", &buffer[i >> 1], &buffer[1 + (i >> 1)]);
+        printf("reading from %i %i\n", i, i + 1);
+        fscanf(fdIn, "%u %u", &buffer[i], &buffer[i + 1]);
       }
     }
     process(seq_sampler, buffer);
@@ -223,7 +225,19 @@ void sample(char *filename, unsigned int s, unsigned int k) {
   }
   seq_time = (float)(wall_clock_time() - start_time) / 1000000000;
   fclose(fdIn);
-  
+
+  unsigned int size;
+  unsigned int *result;
+  printf("Sequential Vector: Time %1.2f s\n", seq_time);
+  // Query the s-sparse sampler and print out
+  size = 0;
+  result = query(seq_sampler, size);
+
+  for (i = 0; i < size; i++)
+    printf("%u ", result[i]);
+  printf("\n");
+
+
   // Read data from file
   // fdIn = fopen(filename, "r");
   // dim3 blocks(k, BUFFER_SIZE / 2);
@@ -238,35 +252,27 @@ void sample(char *filename, unsigned int s, unsigned int k) {
   //   } else {
   //     readBuffer = buffer2;
   //   }
-  //   for (i = 0; i < BUFFER_SIZE / 2; i++)
+  //   for (i = 0; i < BUFFER_SIZE; i+=2)
   //   {
   //     if (feof(fdIn))
   //     {
-  //       readBuffer[i >> 1] = 0;
-  //       readBuffer[1 + (i >> 1)] = 0;
+  //       readBuffer[i] = 0;
+  //       readBuffer[i + 1] = 0;
   //     }
   //     else
   //     {
-  //       fscanf(fdIn, "%u %u", &readBuffer[i >> 1], &readBuffer[1 + (i >> 1)]);
+  //       fscanf(fdIn, "%u %u", &buffer[i], &buffer[1 + (i + 1)]);
   //     }
   //   }
   //   // Synchronize parallel blocks.
   //   cudaDeviceSynchronize();
-  //   // process_gpu<<<blocks, 1>>>(gpu_sampler, readBuffer);
+  //   process_gpu<<<blocks, 1>>>(gpu_sampler, readBuffer);
   //   flip_flop = 1 - flip_flop;
   // }
   // cudaDeviceSynchronize();
   gpu_time = (float)(wall_clock_time() - start_time) / 1000000000;
 
-  unsigned int size;
-  unsigned int * result;
-  printf("Sequential Vector: Time %1.2f s\n", seq_time);
-  // Query the s-sparse sampler and print out
-  size   = 0;
-  result = query(seq_sampler, size);
 
-  for (i = 0; i < size; i++) printf("%u ", result[i]);
-  printf("\n");
   printf("GPU Vector: Time %1.2f s\n", gpu_time);
   // Query the s-sparse sampler and print out
   size   = 0;

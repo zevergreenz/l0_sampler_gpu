@@ -3,8 +3,10 @@ cuda_build:
 	nvcc -o bin/s_sparse_sampler -arch=sm_32 -lm -g s_sparse_sampler.cu
 
 cuda: cuda_build
-	# /usr/bin/time -f "Real Time %e\nCPU Time %U \nKernel Time %S\nContext Switches %w" bin/mm-cuda 1000;
 	bin/s_sparse_sampler data_100k.txt;
+
+cuda_large: cuda_build
+	bin/s_sparse_sampler data_stream.txt;
 
 cuda_memcheck: cuda_build
 	cuda-memcheck bin/s_sparse_sampler data_100k.txt;
