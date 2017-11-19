@@ -120,8 +120,8 @@ __global__ void process_gpu(s_sparse_sampler sampler, unsigned int *buffer) {
   n = sampler.numCoefficients;
   s = sampler.s;
 
-  i = blockIdx.x;
-  j = blockIdx.y;
+  i = threadIdx.x;
+  j = threadIdx.y;
   if(j < n) {
     coefficients[j + i * n] = sampler.coefficients[j + i * n];
   }
@@ -136,6 +136,7 @@ __global__ void process_gpu(s_sparse_sampler sampler, unsigned int *buffer) {
            n,
            index) % (2 * sampler.s);
   one_sampler               = &sampler.samplers[i * 2 * s + hashVal];
+  // printf("I'm at %i\n", i);
   atomicAdd(&(one_sampler->weight), update);
   atomicAdd(&(one_sampler->sum), index *update);
   // This is slow! pow() only exists for single and double-precision floats
@@ -248,7 +249,7 @@ void sample(char *filename, unsigned int s, unsigned int k) {
 
   // Read data from file
   fdIn = fopen(filename, "r");
-  dim3 blocks(k, k);
+  dim3 blocks(k, BUFFER_SIZE / 2);
   dim3 grids(1,1);
   int flip_flop = 0;
   unsigned int *readBuffer = buffer2;
@@ -277,8 +278,8 @@ void sample(char *filename, unsigned int s, unsigned int k) {
     }
     // Synchronize parallel blocks.
     process_gpu<<<1, blocks>>>(gpu_sampler, readBuffer);
-    checkCudaError();
     cudaDeviceSynchronize();
+    checkCudaError();
     flip_flop = 1 - flip_flop;
   }
   cudaDeviceSynchronize();
