@@ -4,7 +4,7 @@
 #include <math.h>
 #include <fcntl.h>
 
-#define BUFFER_SIZE 64
+#define BUFFER_SIZE 4096
 #define P 179426239 // a large prime number
 #define Z 2       // a random number from [0,P-1]
 
@@ -122,20 +122,26 @@ __device__ unsigned int powMod(unsigned int z, unsigned int index) {
 }
 
 __global__ void process_gpu(l0_sampler l0_sampler, unsigned int *buffer) {
-  unsigned int i, j, index, update, hashVal, m, s, k;
+  unsigned int i, j, hashVal, m, s, k;
   s_sparse_sampler *sampler;
   one_sparse_sampler *one_sampler;
   i = threadIdx.x;
   j = threadIdx.y;
   k = blockIdx.x;
+  __shared__ unsigned int index;
+  __shared__ unsigned int update;
+  
+  if(i == 1 && k == 1) {
+    index = buffer[k * 2];
+    update = buffer[1 + (k * 2)];
+  }
+  __syncthreads();
 
   sampler = &(l0_sampler.samplers[j]);
 
   m = sampler->numCoefficients;
   s = sampler->s;
 
-  index = buffer[k * 2];
-  update = buffer[1 + (k * 2)];
   hashVal = hash_gpu( &(sampler->coefficients[i * m]),
            m,
            index) % (2 * sampler->s);

@@ -209,8 +209,7 @@ void sample(char *filename, unsigned int s, unsigned int k) {
 
   rc = cudaMallocManaged((void **)&buffer, sizeof(unsigned int) * BUFFER_SIZE);
   checkCudaError(rc);
-  rc = cudaMallocManaged((void **)&buffer2, sizeof(unsigned int) * BUFFER_SIZE);
-  checkCudaError(rc);
+  // buffer2 = (void **) malloc(&buffer2, sizeof(unsigned int) * BUFFER_SIZE);
 
   int i;
 
@@ -238,50 +237,51 @@ void sample(char *filename, unsigned int s, unsigned int k) {
   unsigned int size;
   unsigned int *result;
   printf("Sequential Vector: Time %1.2f s\n", seq_time);
-  // Query the s-sparse sampler and print out
-  size = 0;
-  result = query(seq_sampler, size);
+  // // Query the s-sparse sampler and print out
+  // size = 0;
+  // result = query(seq_sampler, size);
 
-  for (i = 0; i < size; i++)
-    printf("%u ", result[i]);
-  printf("\n");
+  // for (i = 0; i < size; i++)
+  //   printf("%u ", result[i]);
+  // printf("\n");
 
 
   // Read data from file
   fdIn = fopen(filename, "r");
-  dim3 blocks(k, BUFFER_SIZE / 2);
-  dim3 grids(1,1);
-  int flip_flop = 0;
-  unsigned int *readBuffer = buffer2;
-  start_time = wall_clock_time();
-  while (!feof(fdIn))
-  { 
-    // Basically, process one buffer while reading in the next one
-    // if(flip_flop) {
-    //   readBuffer = buffer;
-    // } else {
-    //   readBuffer = buffer2;
-    // }
-    for (i = 0; i < BUFFER_SIZE; i+=2)
-    {
-      if (feof(fdIn))
-      {
-        readBuffer[i] = 0;
-        readBuffer[i + 1] = 0;
-      }
-      else
-      {
-        // printf("Reading values for: %i,%i to %#10X \n", i, i + 1, &readBuffer[i]);
-        fscanf(fdIn, "%u %u", &readBuffer[i], &readBuffer[i + 1]);
-        // printf("Read values for:%i : %i, %i\n", i, readBuffer[i], readBuffer[i + 1]);
-      }
-    }
-    // Synchronize parallel blocks.
-    process_gpu<<<1, blocks>>>(gpu_sampler, readBuffer);
-    cudaDeviceSynchronize();
-    checkCudaError();
-    flip_flop = 1 - flip_flop;
-  }
+  dim3 blocks(k, k);
+
+  // dim3 grids(1,1);
+  // int flip_flop = 0;
+  // unsigned int *readBuffer = buffer2;
+  // start_time = wall_clock_time();
+  // while (!feof(fdIn))
+  // { 
+  //   // Basically, process one buffer while reading in the next one
+  //   // if(flip_flop) {
+  //   //   readBuffer = buffer;
+  //   // } else {
+  //   //   readBuffer = buffer2;
+  //   // }
+  //   for (i = 0; i < BUFFER_SIZE; i+=2)
+  //   {
+  //     if (feof(fdIn))
+  //     {
+  //       readBuffer[i] = 0;
+  //       readBuffer[i + 1] = 0;
+  //     }
+  //     else
+  //     {
+  //       // printf("Reading values for: %i,%i to %#10X \n", i, i + 1, &readBuffer[i]);
+  //       fscanf(fdIn, "%u %u", &readBuffer[i], &readBuffer[i + 1]);
+  //       // printf("Read values for:%i : %i, %i\n", i, readBuffer[i], readBuffer[i + 1]);
+  //     }
+  //   }
+  //   // Synchronize parallel blocks.
+  //   process_gpu<<<BUFFER_SIZE / 2, k>>>(gpu_sampler, readBuffer);
+  //   cudaDeviceSynchronize();
+  //   checkCudaError();
+  //   flip_flop = 1 - flip_flop;
+  // }
   cudaDeviceSynchronize();
   gpu_time = (float)(wall_clock_time() - start_time) / 1000000000;
 
@@ -307,6 +307,6 @@ int main(int argc, char **argv) {
     printf("Usage: %s <input_file>", argv[0]);
     return 0;
   }
-  sample(argv[1], 16, 16);
+  sample(argv[1], 50 , 25);
   return 0;
 }
