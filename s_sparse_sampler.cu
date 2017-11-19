@@ -238,7 +238,11 @@ void sample(char *filename, unsigned int s, unsigned int k) {
   // cudaFree(d_samplers);
 }
 
-int main(void) {
-  sample("data_stream.txt", 15, 15);
+int main(int argc, char *argv[]){
+  if(argc < 2) {
+    printf("Usage: %s <data_file>", argv[0]);
+    return 0;
+  }
+  sample(argv[1], 15, 15);
   return 0;
 }
