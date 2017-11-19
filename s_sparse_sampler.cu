@@ -120,18 +120,18 @@ __global__ void process_gpu(s_sparse_sampler sampler, unsigned int *buffer) {
   }
   __syncthreads();
 
-  index  = sharedBuffer[j >> 1];
-  update = sharedBuffer[1 + (j >> 1)];
-  hashVal = hash_gpu( &(coefficients[i * n]),
-           n,
-           index) % (2 * sampler.s);
-  one_sampler               = &sampler.samplers[i * 2 * s + hashVal];
-  one_sampler->weight      += update;
-  one_sampler->sum         += index * update;
-  // This is slow! pow() only exists for single and double-precision floats
-  // And we need a double to cover the range of unsigned integers
-  one_sampler->fingerprint += (update * powMod(Z, index));
-  one_sampler->fingerprint %= P;
+  // index  = sharedBuffer[j >> 1];
+  // update = sharedBuffer[1 + (j >> 1)];
+  // hashVal = hash_gpu( &(coefficients[i * n]),
+  //          n,
+  //          index) % (2 * sampler.s);
+  // one_sampler               = &sampler.samplers[i * 2 * s + hashVal];
+  // one_sampler->weight      += update;
+  // one_sampler->sum         += index * update;
+  // // This is slow! pow() only exists for single and double-precision floats
+  // // And we need a double to cover the range of unsigned integers
+  // one_sampler->fingerprint += (update * powMod(Z, index));
+  // one_sampler->fingerprint %= P;
 }
 
 /**
@@ -145,18 +145,18 @@ unsigned int* query(s_sparse_sampler sampler, unsigned int& size) {
 
   size = 0;
   one_sparse_sampler *one_sampler;
-  unsigned int p = P;
+  int p = P;
 
-  for (unsigned int i = 0; i < sampler.k; i++) {
-    for (unsigned int j = 0; j < sampler.s * 2; j++) {
-      one_sampler = &sampler.samplers[i * 2 * sampler.s + j];
+  for (int i = 0; i < sampler.k; i++) {
+    for (int j = 0; j < sampler.s * 2; j++) {
+      one_sampler = &(sampler.samplers[i * 2 * sampler.s + j]);
 
       if (one_sampler->weight != 0) {
         unsigned int index = one_sampler->sum / one_sampler->weight;
         unsigned int error = one_sampler->fingerprint -
                     ((one_sampler->weight * pow(Z, index)));
 
-        if ((unsigned int)error % P == 0) result[size++] = index;
+        if (error % P == 0) result[size++] = index;
       }
     }
   }
@@ -180,7 +180,7 @@ void initialize_s_sparse_sampler(s_sparse_sampler *sampler,
 
 void sample(char *filename, unsigned int s, unsigned int k) {
   s_sparse_sampler seq_sampler, gpu_sampler;
-  unsigned int *buffer;
+  unsigned int *buffer, *buffer2;
 
   long long start_time;
   float seq_time = 0, gpu_time = 0;
@@ -192,13 +192,14 @@ void sample(char *filename, unsigned int s, unsigned int k) {
 
   cudaMallocManaged((void **)&buffer, sizeof(unsigned int) * BUFFER_SIZE);
 
-  // Read data from file
-  FILE *fdIn = fopen(filename, "r");
 
   int i;
 
-  dim3 blocks(k, BUFFER_SIZE / 2);
 
+  // First evaluate sequential program, then parallel program
+  start_time = wall_clock_time();
+  // Read data from file
+  FILE *fdIn = fopen(filename, "r");
   while (!feof(fdIn)) {
     for(i = 0; i < BUFFER_SIZE / 2; i++) {
       if(feof(fdIn)) {
@@ -208,18 +209,44 @@ void sample(char *filename, unsigned int s, unsigned int k) {
         fscanf(fdIn, "%u %u", &buffer[i >> 1], &buffer[1 + (i >> 1)]);
       }
     }
-    start_time = wall_clock_time();
     process(seq_sampler, buffer);
-    seq_time += (float)(wall_clock_time() - start_time)/1000000000;
-
-    start_time = wall_clock_time();
-    process_gpu<<<blocks, 1>>>(gpu_sampler, buffer);
-    cudaDeviceSynchronize();
-    gpu_time += (float)(wall_clock_time() - start_time)/1000000000;
 
   }
-
-  // Synchronize parallel blocks.
+  seq_time = (float)(wall_clock_time() - start_time) / 1000000000;
+  fclose(fdIn);
+  
+  // Read data from file
+  fdIn = fopen(filename, "r");
+  dim3 blocks(k, BUFFER_SIZE / 2);
+  int flip_flop = 0;
+  unsigned int *readBuffer;
+  start_time = wall_clock_time();
+  while (!feof(fdIn))
+  { 
+    // Basically, process one buffer while reading in the next one
+    if(flip_flop) {
+      readBuffer = buffer;
+    } else {
+      readBuffer = buffer2;
+    }
+    for (i = 0; i < BUFFER_SIZE / 2; i++)
+    {
+      if (feof(fdIn))
+      {
+        readBuffer[i >> 1] = 0;
+        readBuffer[1 + (i >> 1)] = 0;
+      }
+      else
+      {
+        fscanf(fdIn, "%u %u", &readBuffer[i >> 1], &readBuffer[1 + (i >> 1)]);
+      }
+    }
+    // Synchronize parallel blocks.
+    cudaDeviceSynchronize();
+    process_gpu<<<blocks, 1>>>(gpu_sampler, readBuffer);
+    flip_flop = 1 - flip_flop;
+  }
+  gpu_time = (float)(wall_clock_time() - start_time) / 1000000000;
 
   unsigned int size;
   unsigned int * result;
@@ -245,6 +272,11 @@ void sample(char *filename, unsigned int s, unsigned int k) {
 }
 
 int main(int argc, char **argv) {
+  // Reads datafile from args
+  if(argc < 2){
+    printf("Usage: %s <input_file>", argv[0]);
+    return 0;
+  }
   sample(argv[1], 15, 15);
   return 0;
 }
